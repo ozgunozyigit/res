@@ -1,8 +1,23 @@
 "use client";
 import { useState } from "react";
 
+const PRODUCTS = [
+  "AFILTA 20 MG 4 FILM TABLET",
+  "A-FERIN FORTE 30 TABLET",
+  "ALPHAGAN-P GOZ DAMLASI",
+  "OMRON M2 BASIC",
+  "VICHY DERCOS SAMP",
+];
+
 export default function Page() {
   const [query, setQuery] = useState("");
+
+  const results =
+    query.length >= 3
+      ? PRODUCTS.filter((p) =>
+          p.toLowerCase().includes(query.toLowerCase())
+        )
+      : [];
 
   return (
     <div style={{ padding: 40, fontFamily: "Arial" }}>
@@ -20,11 +35,11 @@ export default function Page() {
         }}
       />
 
-      {query.length >= 3 && (
-        <div style={{ marginTop: 20 }}>
-          Arama sonucu: <b>{query}</b>
-        </div>
-      )}
+      <div style={{ marginTop: 20 }}>
+        {results.map((item, i) => (
+          <div key={i}>{item}</div>
+        ))}
+      </div>
     </div>
   );
 }
