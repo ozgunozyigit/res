@@ -21,28 +21,6 @@ function normalize(text = "") {
     .trim();
 }
 
-/* ---------------- HELPERS ---------------- */
-
-function getProductName(row) {
-  return (
-    row["Ürün Adı"] ||
-    row["ÜRÜN ADI"] ||
-    row["urun adi"] ||
-    row["product"] ||
-    ""
-  );
-}
-
-function getSales(row) {
-  return Number(
-    row["Sat.Adet"] ||
-    row["SAT.ADET"] ||
-    row["Sat Adet"] ||
-    row["adet"] ||
-    0
-  );
-}
-
 /* ---------------- APP ---------------- */
 
 export default function Page() {
@@ -50,6 +28,8 @@ export default function Page() {
   const [files, setFiles] = useState([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
+
+  const [debug, setDebug] = useState({});
 
   /* -------- FILE UPLOAD -------- */
 
@@ -63,9 +43,12 @@ export default function Page() {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      // 🔥 DEBUG
-      console.log("ÜBS ilk satır:", rows[0]);
-      console.log("Toplam satır:", rows.length);
+      // 🔥 DEBUG EKLENDİ
+      setDebug({
+        firstRow: rows[0],
+        rowCount: rows.length,
+        keys: rows[0] ? Object.keys(rows[0]) : []
+      });
 
       const name = file.name.toUpperCase();
 
@@ -83,8 +66,17 @@ export default function Page() {
     let map = {};
 
     ubsData.forEach(row => {
-      const name = getProductName(row);
-      const qty = getSales(row);
+      const name =
+        row["Ürün Adı"] ||
+        row["ÜRÜN ADI"] ||
+        row["urun adi"] ||
+        "";
+
+      const qty =
+        row["Sat.Adet"] ||
+        row["SAT.ADET"] ||
+        row["Sat Adet"] ||
+        0;
 
       if (!name) return;
 
@@ -94,7 +86,7 @@ export default function Page() {
         map[key] = { name, values: [] };
       }
 
-      map[key].values.push(qty);
+      map[key].values.push(Number(qty));
     });
 
     const result = Object.values(map).map(p => {
@@ -109,8 +101,11 @@ export default function Page() {
       };
     });
 
-    // 🔥 DEBUG
-    console.log("Ürün sayısı:", result.length);
+    // DEBUG
+    setDebug(prev => ({
+      ...prev,
+      productCount: result.length
+    }));
 
     return result;
   }, [ubsData]);
@@ -161,6 +156,12 @@ export default function Page() {
           <h3>Önerilen: {selected.order}</h3>
         </div>
       )}
+
+      {/* 🔥 DEBUG EKRANI */}
+      <h2 style={{ marginTop: 40 }}>DEBUG</h2>
+      <pre style={{ background: "#eee", padding: 10 }}>
+        {JSON.stringify(debug, null, 2)}
+      </pre>
     </div>
   );
 }
