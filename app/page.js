@@ -48,7 +48,10 @@ function levenshtein(a, b) {
 /* ---------------- CSV PARSER ---------------- */
 
 function parseCSV(text) {
-  const delimiter = text.includes(";") ? ";" : ",";
+  let delimiter = ",";
+
+  if (text.includes(";")) delimiter = ";";
+  if (text.includes("\t")) delimiter = "\t";
 
   const lines = text.split("\n").filter(Boolean);
 
@@ -71,6 +74,7 @@ function getProductName(row) {
     row["ürün adı"] ||
     row["urun adi"] ||
     row["ürün"] ||
+    row["urun"] ||
     row["product"] ||
     ""
   );
@@ -78,6 +82,9 @@ function getProductName(row) {
 
 function getSales(row) {
   return Number(
+    row["sat.adet"] ||
+    row["sat adet"] ||
+    row["sat.adet "] ||
     row["satılan adet"] ||
     row["satilan adet"] ||
     row["satis"] ||
@@ -88,6 +95,7 @@ function getSales(row) {
 
 function getStock(row) {
   return Number(
+    row["stok mik."] ||
     row["stok"] ||
     row["miktar"] ||
     row["stock"] ||
@@ -126,10 +134,10 @@ export default function Page() {
 
       let type = "BİLİNMİYOR";
 
-      if (name.includes("UBS")) {
+      if (name.includes("UBS") || name.includes("ÜBS")) {
         setUbsData(prev => [...prev, ...rows]);
         type = "ÜBS";
-      } else if (name.includes("UBA")) {
+      } else if (name.includes("UBA") || name.includes("ÜBA")) {
         setUbaData(prev => [...prev, ...rows]);
         type = "ÜBA";
       } else if (name.includes("ENVANTER") || name.includes("STOK")) {
@@ -148,7 +156,7 @@ export default function Page() {
 
     ubaData.forEach(row => {
       const name = getProductName(row);
-      const mf = parseMF(row["top.alış"] || row["alış"]);
+      const mf = parseMF(row["alış"] || row["alis"]);
 
       if (name && mf) {
         map[normalize(name)] = mf;
