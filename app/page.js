@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import * as XLSX from "xlsx";
 
 /* ---------------- NORMALIZE ---------------- */
 
@@ -45,36 +46,12 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length];
 }
 
-/* ---------------- CSV PARSER ---------------- */
-
-function parseCSV(text) {
-  let delimiter = ",";
-
-  if (text.includes(";")) delimiter = ";";
-  if (text.includes("\t")) delimiter = "\t";
-
-  const lines = text.split("\n").filter(Boolean);
-
-  const headers = lines[0]
-    .split(delimiter)
-    .map(h => h.trim().toLowerCase());
-
-  return lines.slice(1).map(line => {
-    const values = line.split(delimiter);
-    let row = {};
-    headers.forEach((h, i) => (row[h] = values[i]));
-    return row;
-  });
-}
-
 /* ---------------- HELPERS ---------------- */
 
 function getProductName(row) {
   return (
-    row["ürün adı"] ||
+    row["Ürün Adı"] ||
     row["urun adi"] ||
-    row["ürün"] ||
-    row["urun"] ||
     row["product"] ||
     ""
   );
@@ -82,12 +59,9 @@ function getProductName(row) {
 
 function getSales(row) {
   return Number(
+    row["Sat.Adet"] ||
     row["sat.adet"] ||
-    row["sat adet"] ||
-    row["sat.adet "] ||
-    row["satılan adet"] ||
-    row["satilan adet"] ||
-    row["satis"] ||
+    row["Sat Adet"] ||
     row["adet"] ||
     0
   );
@@ -95,17 +69,15 @@ function getSales(row) {
 
 function getStock(row) {
   return Number(
-    row["stok mik."] ||
+    row["Stok Mik."] ||
     row["stok"] ||
-    row["miktar"] ||
-    row["stock"] ||
     0
   );
 }
 
 function parseMF(value) {
   if (!value) return null;
-  const m = value.match(/(\d+)\s*\+\s*(\d+)/);
+  const m = String(value).match(/(\d+)\s*\+\s*(\d+)/);
   if (!m) return null;
   return `${m[1]}+${m[2]}`;
 }
@@ -127,20 +99,23 @@ export default function Page() {
     const fileArr = Array.from(e.target.files);
 
     for (let file of fileArr) {
-      const text = await file.text();
-      const rows = parseCSV(text);
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet);
 
       const name = file.name.toUpperCase();
 
       let type = "BİLİNMİYOR";
 
-      if (name.includes("UBS") || name.includes("ÜBS")) {
+      if (name.includes("ÜBS") || name.includes("UBS")) {
         setUbsData(prev => [...prev, ...rows]);
         type = "ÜBS";
-      } else if (name.includes("UBA") || name.includes("ÜBA")) {
+      } else if (name.includes("ÜBA") || name.includes("UBA")) {
         setUbaData(prev => [...prev, ...rows]);
         type = "ÜBA";
-      } else if (name.includes("ENVANTER") || name.includes("STOK")) {
+      } else if (name.includes("ENVANTER")) {
         setStockData(prev => [...prev, ...rows]);
         type = "ENVANTER";
       }
@@ -156,7 +131,7 @@ export default function Page() {
 
     ubaData.forEach(row => {
       const name = getProductName(row);
-      const mf = parseMF(row["alış"] || row["alis"]);
+      const mf = parseMF(row["Alış"]);
 
       if (name && mf) {
         map[normalize(name)] = mf;
@@ -284,27 +259,18 @@ export default function Page() {
 
       <ul>
         {results.map((r, i) => (
-          <li
-            key={i}
-            style={{ cursor: "pointer" }}
-            onClick={() => setSelected(r)}
-          >
+          <li key={i} onClick={() => setSelected(r)} style={{ cursor: "pointer" }}>
             {r.name}
           </li>
         ))}
       </ul>
 
       {selected && (
-        <div style={{ marginTop: 20, border: "1px solid #ccc", padding: 10 }}>
+        <div style={{ marginTop: 20 }}>
           <h2>{selected.name}</h2>
-
           <p>Ortalama: {selected.avg}</p>
           <p>Stok: {selected.stock}</p>
-
-          <h3 style={{ color: "green" }}>
-            Önerilen Sipariş: {selected.order}
-          </h3>
-
+          <h3>Önerilen Sipariş: {selected.order}</h3>
           <p>MF: {selected.mf}</p>
 
           <button
