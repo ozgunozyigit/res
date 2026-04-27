@@ -45,30 +45,61 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length];
 }
 
-/* ---------------- CSV ---------------- */
+/* ---------------- CSV PARSER ---------------- */
 
 function parseCSV(text) {
+  const delimiter = text.includes(";") ? ";" : ",";
+
   const lines = text.split("\n").filter(Boolean);
-  const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+
+  const headers = lines[0]
+    .split(delimiter)
+    .map(h => h.trim().toLowerCase());
 
   return lines.slice(1).map(line => {
-    const values = line.split(",");
+    const values = line.split(delimiter);
     let row = {};
     headers.forEach((h, i) => (row[h] = values[i]));
     return row;
   });
 }
 
-/* ---------------- MF ---------------- */
+/* ---------------- HELPERS ---------------- */
+
+function getProductName(row) {
+  return (
+    row["ürün adı"] ||
+    row["urun adi"] ||
+    row["ürün"] ||
+    row["product"] ||
+    ""
+  );
+}
+
+function getSales(row) {
+  return Number(
+    row["satılan adet"] ||
+    row["satilan adet"] ||
+    row["satis"] ||
+    row["adet"] ||
+    0
+  );
+}
+
+function getStock(row) {
+  return Number(
+    row["stok"] ||
+    row["miktar"] ||
+    row["stock"] ||
+    0
+  );
+}
 
 function parseMF(value) {
   if (!value) return null;
   const m = value.match(/(\d+)\s*\+\s*(\d+)/);
   if (!m) return null;
-
-  return {
-    text: `${m[1]}+${m[2]}`
-  };
+  return `${m[1]}+${m[2]}`;
 }
 
 /* ---------------- APP ---------------- */
@@ -76,25 +107,37 @@ function parseMF(value) {
 export default function Page() {
   const [ubsData, setUbsData] = useState([]);
   const [ubaData, setUbaData] = useState([]);
+  const [stockData, setStockData] = useState([]);
+  const [files, setFiles] = useState([]);
+
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
 
   /* -------- FILE UPLOAD -------- */
 
   async function handleUpload(e) {
-    const files = Array.from(e.target.files);
+    const fileArr = Array.from(e.target.files);
 
-    for (let file of files) {
+    for (let file of fileArr) {
       const text = await file.text();
       const rows = parseCSV(text);
 
-      if (file.name.toUpperCase().includes("UBS")) {
+      const name = file.name.toUpperCase();
+
+      let type = "BİLİNMİYOR";
+
+      if (name.includes("UBS")) {
         setUbsData(prev => [...prev, ...rows]);
+        type = "ÜBS";
+      } else if (name.includes("UBA")) {
+        setUbaData(prev => [...prev, ...rows]);
+        type = "ÜBA";
+      } else if (name.includes("ENVANTER") || name.includes("STOK")) {
+        setStockData(prev => [...prev, ...rows]);
+        type = "ENVANTER";
       }
 
-      if (file.name.toUpperCase().includes("UBA")) {
-        setUbaData(prev => [...prev, ...rows]);
-      }
+      setFiles(prev => [...prev, { name: file.name, type }]);
     }
   }
 
@@ -104,16 +147,33 @@ export default function Page() {
     let map = {};
 
     ubaData.forEach(row => {
-      const name = row["ürün adı"] || row["urun adi"] || row.product;
-      const mf = parseMF(row["top.alış"] || row.alış);
+      const name = getProductName(row);
+      const mf = parseMF(row["top.alış"] || row["alış"]);
 
       if (name && mf) {
-        map[normalize(name)] = mf.text;
+        map[normalize(name)] = mf;
       }
     });
 
     return map;
   }, [ubaData]);
+
+  /* -------- STOCK MAP -------- */
+
+  const stockMap = useMemo(() => {
+    let map = {};
+
+    stockData.forEach(row => {
+      const name = getProductName(row);
+      const stock = getStock(row);
+
+      if (name) {
+        map[normalize(name)] = stock;
+      }
+    });
+
+    return map;
+  }, [stockData]);
 
   /* -------- PRODUCT LIST -------- */
 
@@ -121,8 +181,8 @@ export default function Page() {
     let map = {};
 
     ubsData.forEach(row => {
-      const name = row["ürün adı"] || row["urun adi"] || row.product;
-      const qty = Number(row["satılan adet"] || row.satis) || 0;
+      const name = getProductName(row);
+      const qty = getSales(row);
 
       if (!name) return;
 
@@ -142,15 +202,18 @@ export default function Page() {
       const avg =
         p.values.reduce((a, b) => a + b, 0) / p.values.length;
 
+      const norm = normalize(p.name);
+
       return {
         name: p.name,
-        normalized: normalize(p.name),
+        normalized: norm,
         avg: avg.toFixed(2),
-        order: Math.ceil(avg * 1.1),
-        mf: mfMap[normalize(p.name)] || "-"
+        stock: stockMap[norm] || 0,
+        order: Math.max(0, Math.ceil(avg * 1.1 - (stockMap[norm] || 0))),
+        mf: mfMap[norm] || "-"
       };
     });
-  }, [ubsData, mfMap]);
+  }, [ubsData, stockMap, mfMap]);
 
   /* -------- SEARCH -------- */
 
@@ -194,6 +257,15 @@ export default function Page() {
 
       <input type="file" multiple onChange={handleUpload} />
 
+      <h3>Yüklenen Dosyalar</h3>
+      <ul>
+        {files.map((f, i) => (
+          <li key={i}>
+            {f.name} - {f.type}
+          </li>
+        ))}
+      </ul>
+
       <div style={{ marginTop: 20 }}>
         <input
           placeholder="Ürün ara (ör: afrin)"
@@ -219,6 +291,7 @@ export default function Page() {
           <h2>{selected.name}</h2>
 
           <p>Ortalama: {selected.avg}</p>
+          <p>Stok: {selected.stock}</p>
 
           <h3 style={{ color: "green" }}>
             Önerilen Sipariş: {selected.order}
