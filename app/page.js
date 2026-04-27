@@ -28,7 +28,6 @@ export default function Page() {
   const [files, setFiles] = useState([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
-
   const [debug, setDebug] = useState({});
 
   /* -------- FILE UPLOAD -------- */
@@ -43,11 +42,10 @@ export default function Page() {
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      // 🔥 DEBUG EKLENDİ
       setDebug({
         firstRow: rows[0],
-        rowCount: rows.length,
-        keys: rows[0] ? Object.keys(rows[0]) : []
+        keys: rows[0] ? Object.keys(rows[0]) : [],
+        rowCount: rows.length
       });
 
       const name = file.name.toUpperCase();
@@ -66,27 +64,35 @@ export default function Page() {
     let map = {};
 
     ubsData.forEach(row => {
-      const name =
-        row["Ürün Adı"] ||
-        row["ÜRÜN ADI"] ||
-        row["urun adi"] ||
-        "";
+      const keys = Object.keys(row);
 
-      const qty =
-        row["Sat.Adet"] ||
-        row["SAT.ADET"] ||
-        row["Sat Adet"] ||
-        0;
+      let name = "";
+      let qty = 0;
+
+      keys.forEach(k => {
+        const key = k.toLowerCase();
+
+        if (key.includes("ürün") || key.includes("urun")) {
+          name = row[k];
+        }
+
+        if (key.includes("sat") && key.includes("adet")) {
+          qty = Number(row[k]);
+        }
+      });
 
       if (!name) return;
 
-      const key = normalize(name);
+      const norm = normalize(name);
 
-      if (!map[key]) {
-        map[key] = { name, values: [] };
+      if (!map[norm]) {
+        map[norm] = {
+          name,
+          values: []
+        };
       }
 
-      map[key].values.push(Number(qty));
+      map[norm].values.push(qty);
     });
 
     const result = Object.values(map).map(p => {
@@ -101,7 +107,6 @@ export default function Page() {
       };
     });
 
-    // DEBUG
     setDebug(prev => ({
       ...prev,
       productCount: result.length
@@ -136,14 +141,18 @@ export default function Page() {
       </ul>
 
       <input
-        placeholder="Ürün ara"
+        placeholder="Ürün ara (ör: aferin)"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
 
       <ul>
         {results.map((r, i) => (
-          <li key={i} onClick={() => setSelected(r)} style={{ cursor: "pointer" }}>
+          <li
+            key={i}
+            onClick={() => setSelected(r)}
+            style={{ cursor: "pointer" }}
+          >
             {r.name}
           </li>
         ))}
@@ -157,7 +166,7 @@ export default function Page() {
         </div>
       )}
 
-      {/* 🔥 DEBUG EKRANI */}
+      {/* DEBUG */}
       <h2 style={{ marginTop: 40 }}>DEBUG</h2>
       <pre style={{ background: "#eee", padding: 10 }}>
         {JSON.stringify(debug, null, 2)}
