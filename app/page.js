@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import * as XLSX from "xlsx";
+import * as pdfjsLib from "pdfjs-dist";
 
 /* ---------------- NORMALIZE ---------------- */
 
@@ -47,6 +48,35 @@ function levenshtein(a, b) {
   return matrix[b.length][a.length];
 }
 
+/* ---------------- PDF ---------------- */
+
+async function parsePDF(file) {
+  const data = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+  let text = "";
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+
+    text += content.items.map(i => i.str).join(" ") + "\n";
+  }
+
+  return text;
+}
+
+function extractProducts(text) {
+  return text
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l.length > 5)
+    .map(l => ({
+      raw: l,
+      normalized: normalize(l)
+    }));
+}
+
 /* ---------------- HELPERS ---------------- */
 
 function getProductName(row) {
@@ -64,16 +94,6 @@ function getSales(row) {
     row["Sat.Adet"] ||
     row["SAT.ADET"] ||
     row["Sat Adet"] ||
-    row["adet"] ||
-    0
-  );
-}
-
-function getStock(row) {
-  return Number(
-    row["Stok Mik."] ||
-    row["STOK MIK."] ||
-    row["stok"] ||
     0
   );
 }
@@ -90,7 +110,7 @@ function parseMF(value) {
 export default function Page() {
   const [ubsData, setUbsData] = useState([]);
   const [ubaData, setUbaData] = useState([]);
-  const [stockData, setStockData] = useState([]);
+  const [pdfProducts, setPdfProducts] = useState([]);
   const [files, setFiles] = useState([]);
 
   const [search, setSearch] = useState("");
@@ -102,13 +122,25 @@ export default function Page() {
     const fileArr = Array.from(e.target.files);
 
     for (let file of fileArr) {
+      const name = file.name.toUpperCase();
+
+      // PDF
+      if (name.includes("PDF")) {
+        const text = await parsePDF(file);
+        const products = extractProducts(text);
+
+        setPdfProducts(products);
+        setFiles(prev => [...prev, { name: file.name, type: "PDF" }]);
+        continue;
+      }
+
+      // EXCEL
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
 
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(sheet);
 
-      const name = file.name.toUpperCase();
       let type = "BİLİNMİYOR";
 
       if (name.includes("ÜBS") || name.includes("UBS")) {
@@ -117,9 +149,6 @@ export default function Page() {
       } else if (name.includes("ÜBA") || name.includes("UBA")) {
         setUbaData(prev => [...prev, ...rows]);
         type = "ÜBA";
-      } else if (name.includes("ENVANTER") || name.includes("STOK")) {
-        setStockData(prev => [...prev, ...rows]);
-        type = "ENVANTER";
       }
 
       setFiles(prev => [...prev, { name: file.name, type }]);
@@ -143,41 +172,35 @@ export default function Page() {
     return map;
   }, [ubaData]);
 
-  /* -------- STOCK MAP -------- */
+  /* -------- NAME MATCH -------- */
 
-  const stockMap = useMemo(() => {
-    let map = {};
+  function matchName(name) {
+    const n = normalize(name);
 
-    stockData.forEach(row => {
-      const name = getProductName(row);
-      const stock = getStock(row);
+    const found = pdfProducts.find(p =>
+      p.normalized.includes(n)
+    );
 
-      if (name) {
-        map[normalize(name)] = stock;
-      }
-    });
+    return found ? found.raw : name;
+  }
 
-    return map;
-  }, [stockData]);
-
-  /* -------- PRODUCT LIST -------- */
+  /* -------- PRODUCTS -------- */
 
   const products = useMemo(() => {
     let map = {};
 
     ubsData.forEach(row => {
-      const name = getProductName(row);
+      let name = getProductName(row);
       const qty = getSales(row);
 
       if (!name) return;
 
+      name = matchName(name);
+
       const key = normalize(name);
 
       if (!map[key]) {
-        map[key] = {
-          name,
-          values: []
-        };
+        map[key] = { name, values: [] };
       }
 
       map[key].values.push(qty);
@@ -193,12 +216,11 @@ export default function Page() {
         name: p.name,
         normalized: norm,
         avg: avg.toFixed(2),
-        stock: stockMap[norm] || 0,
-        order: Math.max(0, Math.ceil(avg * 1.1 - (stockMap[norm] || 0))),
+        order: Math.ceil(avg * 1.1),
         mf: mfMap[norm] || "-"
       };
     });
-  }, [ubsData, stockMap, mfMap]);
+  }, [ubsData, mfMap, pdfProducts]);
 
   /* -------- SEARCH -------- */
 
@@ -225,10 +247,7 @@ export default function Page() {
     if (!search) return [];
 
     return products
-      .map(p => ({
-        ...p,
-        score: score(search, p)
-      }))
+      .map(p => ({ ...p, score: score(search, p) }))
       .filter(p => p.score > 50)
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
@@ -245,27 +264,19 @@ export default function Page() {
       <h3>Yüklenen Dosyalar</h3>
       <ul>
         {files.map((f, i) => (
-          <li key={i}>
-            {f.name} - {f.type}
-          </li>
+          <li key={i}>{f.name} - {f.type}</li>
         ))}
       </ul>
 
-      <div style={{ marginTop: 20 }}>
-        <input
-          placeholder="Ürün ara (ör: afrin)"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <input
+        placeholder="Ürün ara"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       <ul>
         {results.map((r, i) => (
-          <li
-            key={i}
-            style={{ cursor: "pointer" }}
-            onClick={() => setSelected(r)}
-          >
+          <li key={i} onClick={() => setSelected(r)} style={{ cursor: "pointer" }}>
             {r.name}
           </li>
         ))}
@@ -275,21 +286,8 @@ export default function Page() {
         <div style={{ marginTop: 20 }}>
           <h2>{selected.name}</h2>
           <p>Ortalama: {selected.avg}</p>
-          <p>Stok: {selected.stock}</p>
-
-          <h3 style={{ color: "green" }}>
-            Önerilen Sipariş: {selected.order}
-          </h3>
-
+          <h3>Önerilen: {selected.order}</h3>
           <p>MF: {selected.mf}</p>
-
-          <button
-            onClick={() =>
-              navigator.clipboard.writeText(selected.order.toString())
-            }
-          >
-            Kopyala
-          </button>
         </div>
       )}
     </div>
