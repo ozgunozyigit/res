@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 
 function normalize(text = "") {
   return text
+    .toString()
     .toUpperCase()
     .replace(/0/g, "O")
     .replace(/İ/g, "I")
@@ -51,6 +52,7 @@ function levenshtein(a, b) {
 function getProductName(row) {
   return (
     row["Ürün Adı"] ||
+    row["ÜRÜN ADI"] ||
     row["urun adi"] ||
     row["product"] ||
     ""
@@ -60,7 +62,7 @@ function getProductName(row) {
 function getSales(row) {
   return Number(
     row["Sat.Adet"] ||
-    row["sat.adet"] ||
+    row["SAT.ADET"] ||
     row["Sat Adet"] ||
     row["adet"] ||
     0
@@ -70,6 +72,7 @@ function getSales(row) {
 function getStock(row) {
   return Number(
     row["Stok Mik."] ||
+    row["STOK MIK."] ||
     row["stok"] ||
     0
   );
@@ -106,7 +109,6 @@ export default function Page() {
       const rows = XLSX.utils.sheet_to_json(sheet);
 
       const name = file.name.toUpperCase();
-
       let type = "BİLİNMİYOR";
 
       if (name.includes("ÜBS") || name.includes("UBS")) {
@@ -115,7 +117,7 @@ export default function Page() {
       } else if (name.includes("ÜBA") || name.includes("UBA")) {
         setUbaData(prev => [...prev, ...rows]);
         type = "ÜBA";
-      } else if (name.includes("ENVANTER")) {
+      } else if (name.includes("ENVANTER") || name.includes("STOK")) {
         setStockData(prev => [...prev, ...rows]);
         type = "ENVANTER";
       }
@@ -259,7 +261,11 @@ export default function Page() {
 
       <ul>
         {results.map((r, i) => (
-          <li key={i} onClick={() => setSelected(r)} style={{ cursor: "pointer" }}>
+          <li
+            key={i}
+            style={{ cursor: "pointer" }}
+            onClick={() => setSelected(r)}
+          >
             {r.name}
           </li>
         ))}
@@ -270,7 +276,11 @@ export default function Page() {
           <h2>{selected.name}</h2>
           <p>Ortalama: {selected.avg}</p>
           <p>Stok: {selected.stock}</p>
-          <h3>Önerilen Sipariş: {selected.order}</h3>
+
+          <h3 style={{ color: "green" }}>
+            Önerilen Sipariş: {selected.order}
+          </h3>
+
           <p>MF: {selected.mf}</p>
 
           <button
